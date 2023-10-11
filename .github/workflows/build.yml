@@ -1,0 +1,92 @@
+name: Build
+on:
+  push:
+    branches:
+      - main
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies for MXE
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake \
+            autopoint \
+            bash \
+            bison \
+            bzip2 \
+            flex \
+            g++ \
+            g++-multilib \
+            gettext \
+            git \
+            gperf \
+            intltool \
+            libc6-dev-i386 \
+            libgdk-pixbuf2.0-dev \
+            libltdl-dev \
+            libgl-dev \
+            libpcre3-dev \
+            libssl-dev \
+            libtool-bin \
+            libxml-parser-perl \
+            lzip \
+            make \
+            openssl \
+            p7zip-full \
+            patch \
+            perl \
+            python3 \
+            python3-distutils \
+            python3-mako \
+            python3-pkg-resources \
+            python-is-python3 \
+            ruby \
+            sed \
+            unzip \
+            wget \
+            xz-utils
+
+      - name: Cache MXE
+        id: cache-mxe
+        uses: actions/cache@v3
+        with:
+          path: ${{ github.workspace }}/mxe
+          key: mxe
+
+      - name: Get MXE
+        if: steps.cache-mxe.outputs.cache-hit != 'true'
+        run: 'git clone https://github.com/mxe/mxe.git'
+
+      - name: Build MXE
+        if: steps.cache-mxe.outputs.cache-hit != 'true'
+        run: 'cd mxe && make MXE_TARGETS=x86_64-w64-mingw32.static qtbase'
+
+      - name: Set environment variable
+        run: 'echo PATH="$PATH:${{ github.workspace }}/mxe/usr/bin" >> $GITHUB_ENV'
+
+      - name: Run QMake
+        run: |
+          cd ./src
+          x86_64-w64-mingw32.static-qmake-qt5 numpad-emulator.pro
+
+      - name: Make system header file lowercase
+        run: |
+          for i in "Windows" "WindowsX" "Shlobj"; do
+            find ./src -type f -exec sed -i "s/#include <$i\.h>/#include <$(echo $i | tr '[:upper:]' '[:lower:]').h>/g" {} +
+          done
+
+      - name: Run Make
+        run: |
+          cd ./src
+          make || true
+          echo "Note: Ignore '...windeployqt: Not a directory' error. It is not necessary!"
+
+      - name: Upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: numpad-emulator
+          path: ${{ github.workspace }}/src/install/*.exe
